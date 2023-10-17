@@ -8,3 +8,5 @@ src = "contracts"
 out = "artifacts"
 libs = ["node_modules"]
 fs_permissions = [{ access = "read", path = "./" }]
+
+solc_version = "0.8.17"
